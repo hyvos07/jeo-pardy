@@ -64,7 +64,7 @@ export function GameScreen({
         scores={scores}
         title={
           <h1 className="text-primary text-lg font-bold tracking-tight sm:text-xl">
-            Bible Jeopardy
+            {state.pack.title}
           </h1>
         }
         action={
@@ -81,6 +81,8 @@ export function GameScreen({
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-4 sm:px-6">
         <JeopardyBoard
+          categories={state.pack.categories}
+          points={state.pack.points}
           cards={state.cards}
           disabled={state.activeCardId !== null}
           onOpen={handleOpen}

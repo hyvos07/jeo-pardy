@@ -12,8 +12,10 @@ import { computeRanking } from "../game/scoring";
  * lives only in memory, so a real route would hand back an empty board on
  * refresh or Back (PRD §22.1).
  */
-export default function BibleJeopardy() {
-  const [state, dispatch] = useReducer(gameReducer, undefined, createInitialState);
+export default function JeopardyGame() {
+  const [state, dispatch] = useReducer(gameReducer, undefined, () =>
+    createInitialState(),
+  );
 
   const onStart = useCallback(
     (teamCount: number) => dispatch({ type: "START_GAME", teamCount }),
@@ -34,7 +36,9 @@ export default function BibleJeopardy() {
 
   return (
     <AnimatePresence mode="wait">
-      {state.status === "home" && <HomeScreen key="home" onStart={onStart} />}
+      {state.status === "home" && (
+        <HomeScreen key="home" pack={state.pack} onStart={onStart} />
+      )}
 
       {state.status === "playing" && (
         <GameScreen

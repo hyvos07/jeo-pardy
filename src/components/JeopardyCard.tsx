@@ -1,8 +1,10 @@
 import type { JeopardyCard as Card } from "../game/types";
-import { CATEGORY_LABEL } from "../game/types";
 
 interface Props {
   card: Card;
+  categoryLabel: string;
+  /** 0 = cheapest tier, 1 = dearest. Drives shading without hard-coded values. */
+  tierRatio: number;
   disabled: boolean;
   onOpen: (cardId: string) => void;
   registerRef: (cardId: string, el: HTMLButtonElement | null) => void;
@@ -16,11 +18,17 @@ interface Props {
  */
 export function JeopardyCardTile({
   card,
+  categoryLabel,
+  tierRatio,
   disabled,
   onOpen,
   registerRef,
 }: Props) {
   const played = card.opened;
+  // Upper half of the tiers shifts to the lighter blue; the dearest tier alone
+  // gets a warm border. Both are relative to the pack, so any point scale works.
+  const upperHalf = tierRatio > 0.5;
+  const dearest = tierRatio === 1;
 
   const base =
     "border-edge bg-surface rounded-card flex aspect-square w-full flex-col items-center justify-center border";
@@ -34,8 +42,8 @@ export function JeopardyCardTile({
       tabIndex={played ? -1 : undefined}
       aria-label={
         played
-          ? `${CATEGORY_LABEL[card.category]}, ${card.points} poin, sudah dimainkan`
-          : `${CATEGORY_LABEL[card.category]}, ${card.points} poin`
+          ? `${categoryLabel}, ${card.points} poin, sudah dimainkan`
+          : `${categoryLabel}, ${card.points} poin`
       }
       onClick={() => onOpen(card.id)}
       className={
@@ -45,9 +53,9 @@ export function JeopardyCardTile({
              hover:enabled:-translate-y-0.5 hover:enabled:scale-103 hover:enabled:shadow-md
              active:enabled:scale-100
              ${
-               // The 10-pointer reads a touch warmer, never loud enough to
+               // The dearest tier reads a touch warmer, never loud enough to
                // telegraph difficulty (PRD §18).
-               card.points === 10 ? "border-accent/30" : ""
+               dearest ? "border-accent/30" : ""
              }`
       }
     >
@@ -58,7 +66,7 @@ export function JeopardyCardTile({
         <span className="flex flex-col items-center leading-none">
           <span
             className={`text-4xl font-bold tracking-tight tabular-nums sm:text-5xl lg:text-6xl ${
-              card.points >= 5 ? "text-secondary" : "text-primary"
+              upperHalf ? "text-secondary" : "text-primary"
             }`}
           >
             {card.points}

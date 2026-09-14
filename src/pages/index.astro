@@ -1,6 +1,7 @@
 ---
 import "../styles/global.css";
-import BibleJeopardy from "../components/BibleJeopardy";
+import JeopardyGame from "../components/JeopardyGame";
+import { quizPack } from "../content/pack";
 ---
 
 <!doctype html>
@@ -9,11 +10,14 @@ import BibleJeopardy from "../components/BibleJeopardy";
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="description" content="Kuis Alkitab bergaya Jeopardy." />
+    <meta
+      name="description"
+      content={quizPack.subtitle ?? `Kuis bergaya Jeopardy: ${quizPack.title}.`}
+    />
     <meta name="color-scheme" content="light" />
-    <title>Bible Jeopardy</title>
+    <title>{quizPack.title}</title>
   </head>
   <body>
-    <BibleJeopardy client:load />
+    <JeopardyGame client:load />
   </body>
 </html>

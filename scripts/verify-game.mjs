@@ -6,11 +6,15 @@
  *   double click  -> reveal answer
  *   click outside -> closes ONLY after the answer is revealed
  *
+ * Everything is derived from questions.json, so this keeps working whatever
+ * pack is loaded.
+ *
  * Usage: npm run dev, then `npm run verify` in another terminal.
  */
+import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
 
-const URL = process.env.VERIFY_URL || "http://localhost:4321/";
+const APP_URL = process.env.VERIFY_URL || "http://localhost:4321/";
 const SHOTS = process.argv[2] || null;
 const results = [];
 let failed = 0;
@@ -24,6 +28,41 @@ const shot = async (page, name) => {
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png` });
 };
 
+// ---------- LOAD THE PACK ----------
+const pack = JSON.parse(
+  readFileSync(new URL("../src/content/questions.json", import.meta.url), "utf8"),
+);
+
+const slug = (s) =>
+  s
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\p{Letter}\p{Number}]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+
+const categories = pack.categories.map((c) =>
+  typeof c === "string" ? { id: slug(c), label: c } : { id: c.id ?? slug(c.label), label: c.label },
+);
+const points = pack.points;
+const totalCards = categories.length * points.length;
+
+const firstCat = categories[0];
+const lastCat = categories[categories.length - 1];
+// Pick a mid tier for the mouse path and the dearest for the keyboard path.
+const midPoints = points[Math.min(1, points.length - 1)];
+const topPoints = points[points.length - 1];
+
+const cardOf = (categoryId, value) =>
+  pack.cards.find((c) => c.category === categoryId && c.points === value);
+
+const midCard = cardOf(firstCat.id, midPoints);
+const topCard = cardOf(lastCat.id, topPoints);
+
+if (!midCard || !topCard) {
+  console.error("Pack is missing the cards this script drives; check questions.json.");
+  process.exit(1);
+}
+
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 
@@ -31,11 +70,14 @@ const errors = [];
 page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
 page.on("pageerror", (e) => errors.push(String(e)));
 
-await page.goto(URL, { waitUntil: "networkidle" });
+await page.goto(APP_URL, { waitUntil: "networkidle" });
 
 // ---------- HOME ----------
-await page.waitForSelector("text=Bible Jeopardy");
-check("home renders title", await page.isVisible("text=Bible Jeopardy"));
+await page.waitForSelector(`text=${pack.title}`);
+check("home renders the pack title", await page.isVisible(`text=${pack.title}`));
+if (pack.subtitle) {
+  check("home renders the subtitle", await page.isVisible(`text=${pack.subtitle}`));
+}
 
 const count = () => page.textContent("output");
 check("default team count is 2", (await count()).trim() === "2");
@@ -53,12 +95,15 @@ check("stepper returns to 3", (await count()).trim() === "3");
 await shot(page, "01-home");
 
 await page.getByRole("button", { name: "Mulai" }).click();
-await page.waitForSelector("text=Perjanjian Lama");
+await page.waitForSelector(`text=${firstCat.label}`);
 
 // ---------- BOARD ----------
 check(
-  "board has 12 playable cards",
-  (await page.locator("main button:not([aria-disabled])").count()) === 12,
+  `board has ${totalCards} playable cards`,
+  (await page.locator("main button:not([aria-disabled])").count()) === totalCards,
+);
+check("every category heading is shown",
+  (await Promise.all(categories.map((c) => page.isVisible(`text=${c.label}`)))).every(Boolean),
 );
 check("score indicator visible", await page.isVisible("text=Tim 1"));
 check("three teams listed", await page.isVisible("text=Tim 3"));
@@ -72,17 +117,18 @@ check(
 await shot(page, "02-board");
 
 // ---------- QUESTION ----------
-await page.getByRole("button", { name: /Perjanjian Lama, 3 poin/ }).click();
+const midLabel = new RegExp(`${firstCat.label}, ${midPoints} poin`);
+await page.getByRole("button", { name: midLabel }).click();
 await page.waitForSelector('[role="dialog"]');
 check("single click opens question", await page.isVisible('[role="dialog"]'));
-check("point badge shows", await page.isVisible("text=3 Poin"));
+check("point badge shows", await page.isVisible(`text=${midPoints} Poin`));
+check("question text shown", await page.isVisible(`text=${midCard.question}`));
 
 // The answer must be ABSENT from the DOM, not merely hidden (PRD §11) —
 // otherwise players could read it via Inspect Element or Ctrl+F.
-const answerText = "[Jawaban 3 poin — Perjanjian Lama]";
 check(
   "answer absent from DOM before reveal",
-  !(await page.evaluate((t) => document.body.innerHTML.includes(t), answerText)),
+  !(await page.evaluate((t) => document.body.innerHTML.includes(t), midCard.answer)),
 );
 await shot(page, "03-question");
 
@@ -90,7 +136,7 @@ await shot(page, "03-question");
 await page.mouse.click(30, 450);
 await page.waitForTimeout(400);
 check("outside click ignored on question", await page.isVisible('[role="dialog"]'));
-check("still on question face", await page.isVisible("text=3 Poin"));
+check("still on question face", await page.isVisible(`text=${midPoints} Poin`));
 
 await page.keyboard.press("Escape");
 await page.waitForTimeout(400);
@@ -98,9 +144,9 @@ check("Escape ignored on question", await page.isVisible('[role="dialog"]'));
 
 // ---------- ANSWER ----------
 await page.locator('[role="dialog"]').dblclick({ position: { x: 200, y: 60 } });
-await page.waitForTimeout(900);
+await page.waitForTimeout(1000);
 check("double click reveals answer", await page.isVisible("text=Jawaban"));
-check("answer text now present", await page.isVisible(`text=${answerText}`));
+check("answer text now present", await page.isVisible(`text=${midCard.answer}`));
 check("score dropdown appears", await page.isVisible("#score-assignment"));
 check(
   "dropdown defaults to nobody",
@@ -129,13 +175,13 @@ const scoreOf = (name) =>
 
 await page.selectOption("#score-assignment", "team-1");
 await page.waitForTimeout(300);
-check("preview awards Tim 1", (await scoreOf("Tim 1")) === "3");
+check("preview awards Tim 1", (await scoreOf("Tim 1")) === String(midPoints));
 
 // Changing the pick must MOVE the points, not duplicate them (PRD §12.3).
 await page.selectOption("#score-assignment", "team-2");
 await page.waitForTimeout(900);
 check("changing pick moves points off Tim 1", (await scoreOf("Tim 1")) === "0");
-check("changing pick gives points to Tim 2", (await scoreOf("Tim 2")) === "3");
+check("changing pick gives points to Tim 2", (await scoreOf("Tim 2")) === String(midPoints));
 
 await page.mouse.click(30, 450);
 await page.waitForTimeout(500);
@@ -144,17 +190,21 @@ check(
   "played card is marked",
   (await page.locator('main button[aria-disabled="true"]').count()) === 1,
 );
-check("card stays in the grid", (await page.locator("main button").count()) === 12);
+check(
+  "card stays in the grid",
+  (await page.locator("main button").count()) === totalCards,
+);
 await shot(page, "05-after-close");
 
 // ---------- KEYBOARD PATH ----------
-await page.getByRole("button", { name: /Tokoh Rasul, 5 poin/ }).focus();
+const topLabel = new RegExp(`${lastCat.label}, ${topPoints} poin`);
+await page.getByRole("button", { name: topLabel }).focus();
 await page.keyboard.press("Enter");
 await page.waitForSelector('[role="dialog"]');
 check("Enter opens card from board", await page.isVisible('[role="dialog"]'));
 
 await page.keyboard.press("Enter");
-await page.waitForTimeout(900);
+await page.waitForTimeout(1000);
 check("Enter reveals answer", await page.isVisible("#score-assignment"));
 
 await page.selectOption("#score-assignment", "team-3");
@@ -162,7 +212,7 @@ await page.waitForTimeout(200);
 await page.keyboard.press("Escape");
 await page.waitForTimeout(500);
 check("Escape closes on answer state", !(await page.isVisible('[role="dialog"]')));
-check("keyboard award landed on Tim 3", (await scoreOf("Tim 3")) === "5");
+check("keyboard award landed on Tim 3", (await scoreOf("Tim 3")) === String(topPoints));
 
 // ---------- FINISH ----------
 await page.getByRole("button", { name: "Selesai" }).click();
@@ -172,19 +222,20 @@ check("winner treatment shown", await page.isVisible("text=Winner"));
 
 const winnerBlock = await page.textContent("section");
 check(
-  "Tim 3 is the winner",
-  winnerBlock.includes("Tim 3") && winnerBlock.includes("5"),
+  "top scorer wins",
+  winnerBlock.includes("Tim 3") && winnerBlock.includes(String(topPoints)),
 );
+check("podium labels the unit", (await page.locator("text=Poin").count()) > 0);
 await page.waitForTimeout(1200);
 await shot(page, "06-results");
 
 await page.getByRole("button", { name: "Main Lagi" }).click();
-await page.waitForSelector("text=Uji pengetahuanmu");
-check("Main Lagi returns home", await page.isVisible("text=Uji pengetahuanmu"));
+await page.waitForSelector(`text=${pack.title}`);
+check("Main Lagi returns home", await page.isVisible("button:has-text('Mulai')"));
 
 // ---------- ALL-ZERO EDGE CASE (PRD §15.3) ----------
 await page.getByRole("button", { name: "Mulai" }).click();
-await page.waitForSelector("text=Perjanjian Lama");
+await page.waitForSelector(`text=${firstCat.label}`);
 await page.getByRole("button", { name: "Selesai" }).click();
 await page.waitForTimeout(600);
 check("all-zero shows no winner", await page.isVisible("text=Tidak ada pemenang"));

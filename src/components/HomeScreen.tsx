@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { TeamCountInput } from "./TeamCountInput";
-import { DEFAULT_TEAMS } from "../game/types";
+import { DEFAULT_TEAMS, type QuizPack } from "../game/types";
 import { useReducedMotion } from "./useMediaQuery";
 
 interface Props {
+  pack: QuizPack;
   onStart: (teamCount: number) => void;
 }
 
-export function HomeScreen({ onStart }: Props) {
+export function HomeScreen({ pack, onStart }: Props) {
   const [teamCount, setTeamCount] = useState(DEFAULT_TEAMS);
   const reduced = useReducedMotion();
 
@@ -20,12 +21,14 @@ export function HomeScreen({ onStart }: Props) {
       className="flex min-h-dvh flex-col items-center justify-center gap-12 px-6 py-16"
     >
       <header className="text-center">
-        <h1 className="text-primary text-4xl font-bold tracking-tight sm:text-5xl">
-          Bible Jeopardy
+        <h1 className="text-primary text-4xl font-bold tracking-tight text-balance sm:text-5xl">
+          {pack.title}
         </h1>
-        <p className="text-ink-muted mt-3 text-base">
-          Uji pengetahuanmu tentang Alkitab
-        </p>
+        {pack.subtitle && (
+          <p className="text-ink-muted mt-3 text-base text-balance">
+            {pack.subtitle}
+          </p>
+        )}
       </header>
 
       <TeamCountInput value={teamCount} onChange={setTeamCount} />

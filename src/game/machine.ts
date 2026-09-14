@@ -36,7 +36,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case "START_GAME": {
       if (state.status !== "home") return state;
-      return createGameState(action.teamCount);
+      return createGameState(action.teamCount, state.pack);
     }
 
     case "OPEN_CARD": {
@@ -95,7 +95,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     }
 
     case "RESET":
-      return createInitialState();
+      return createInitialState(state.pack);
 
     default:
       return state;

@@ -2,14 +2,38 @@ import { describe, expect, it } from "vitest";
 import { gameReducer } from "./machine";
 import { createGameState, createInitialState } from "./init";
 import { computeRanking, computeScore, computeScores } from "./scoring";
-import { CATEGORY_ORDER, TOTAL_CARDS, type GameAction, type GameState } from "./types";
+import { parseQuizPack } from "./pack";
+import type { GameAction, GameState, QuizPack } from "./types";
+
+/**
+ * A synthetic pack, so these tests exercise the state machine rather than
+ * whatever happens to be in questions.json.
+ */
+const CATEGORIES = ["ot", "nt", "ap"] as const;
+const POINTS = [1, 3, 5, 10] as const;
+
+const TEST_PACK: QuizPack = parseQuizPack({
+  title: "Test Pack",
+  categories: CATEGORIES.map((id) => ({ id, label: id.toUpperCase() })),
+  points: [...POINTS],
+  cards: CATEGORIES.flatMap((category) =>
+    POINTS.map((points) => ({
+      category,
+      points,
+      question: `Q ${category} ${points}`,
+      answer: `A ${category} ${points}`,
+    })),
+  ),
+});
+
+const TOTAL_CARDS = CATEGORIES.length * POINTS.length;
 
 function run(state: GameState, ...actions: GameAction[]): GameState {
   return actions.reduce(gameReducer, state);
 }
 
 function playing(teams = 3): GameState {
-  return createGameState(teams);
+  return createGameState(teams, TEST_PACK);
 }
 
 /** Invariant PRD §6.3 #6 — total score equals points of awarded played cards. */
@@ -32,21 +56,21 @@ describe("setup", () => {
     expect(keys.size).toBe(TOTAL_CARDS);
   });
 
-  it("offers the 1/3/5/10 point tiers in every category", () => {
+  it("offers every point tier in every category", () => {
     const state = playing();
-    for (const category of CATEGORY_ORDER) {
+    for (const category of CATEGORIES) {
       const tiers = state.cards
         .filter((c) => c.category === category)
         .map((c) => c.points)
         .sort((a, b) => a - b);
-      expect(tiers).toEqual([1, 3, 5, 10]);
+      expect(tiers).toEqual([...POINTS]);
     }
   });
 
   it("clamps team count to 2..10", () => {
-    expect(createGameState(1).teams).toHaveLength(2);
-    expect(createGameState(99).teams).toHaveLength(10);
-    expect(createGameState(4).teams).toHaveLength(4);
+    expect(createGameState(1, TEST_PACK).teams).toHaveLength(2);
+    expect(createGameState(99, TEST_PACK).teams).toHaveLength(10);
+    expect(createGameState(4, TEST_PACK).teams).toHaveLength(4);
   });
 
   it("starts every team at zero", () => {
@@ -57,12 +81,13 @@ describe("setup", () => {
   });
 
   it("starts the game from home", () => {
-    const state = gameReducer(createInitialState(), {
+    const state = gameReducer(createInitialState(TEST_PACK), {
       type: "START_GAME",
       teamCount: 3,
     });
     expect(state.status).toBe("playing");
     expect(state.teams).toHaveLength(3);
+    expect(state.cards).toHaveLength(TOTAL_CARDS);
   });
 });
 
@@ -291,10 +316,11 @@ describe("game completion", () => {
     expect(gameReducer(finished, { type: "FINISH_GAME" })).toEqual(finished);
   });
 
-  it("reset returns to home", () => {
+  it("reset returns to home and keeps the loaded pack", () => {
     const state = run(playing(), { type: "FINISH_GAME" }, { type: "RESET" });
     expect(state.status).toBe("home");
     expect(state.cards).toHaveLength(0);
+    expect(state.pack).toBe(TEST_PACK);
   });
 });
 
