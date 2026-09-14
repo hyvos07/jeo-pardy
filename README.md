@@ -1,43 +1,73 @@
-# Astro Starter Kit: Minimal
+# 👨‍🏫 Jeopardy Quiz
+
+Permainan kuis bergaya Jeopardy untuk dimainkan bersama di satu layar: laptop moderator, atau laptop yang tersambung ke proyektor.
+
+Temanya bebas. Seluruh isi permainan dibaca dari satu file JSON, jadi judul, kategori, tingkat poin, dan pertanyaan bisa diganti tanpa menyentuh kode ini sama sekali!
+
+## 🏃‍♂️ Get the App Running
 
 ```sh
-npm create astro@latest -- --template minimal
+npm install
+npm run dev        # buka http://localhost:4321
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+| Perintah | Kegunaan |
+| --- | --- |
+| `npm run dev` | Server pengembangan |
+| `npm run build` | Build statis ke `dist/` |
+| `npm run preview` | Pratinjau hasil build |
+| `npm test` | Uji logika permainan dan validasi berkas soal |
+| `npm run verify` | Uji interaksi di browser sungguhan (butuh `npm run dev` berjalan) |
 
-## 🚀 Project Structure
+## 📝 Fill the Questions
 
-Inside of your Astro project, you'll see the following folders and files:
+Buat file **[`src/content/questions.json`](src/content/questions.json)**, lalu isi dengan pertanyaan yang ingin digunakan. Format lengkap, termasuk contoh prompt untuk membuat soal dengan bantuan LLM ada di **[`docs/QUESTION-FORMAT.md`](docs/QUESTION-FORMAT.md)**.
 
-```text
-/
-├── public/
-├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
+Contoh:
+
+```json
+{
+  "title": "Movie Night Jeopardy",
+  "subtitle": "Seberapa hafal kamu dengan film?",
+  "categories": ["Film Klasik", "Sutradara"],
+  "points": [1, 3, 5],
+  "cards": [
+    {
+      "category": "film-klasik",
+      "points": 1,
+      "question": "Film 1972 tentang keluarga Corleone?",
+      "answer": "The Godfather"
+    }
+    // ...
+  ]
+}
 ```
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+File JSON divalidasi saat aplikasi dimuat, jadi card yang kurang atau salah rujuk akan memblokir permainan untuk dimulai.
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
+## 🤼 Cara Bermain
 
-Any static assets, like images, can be placed in the `public/` directory.
+Moderator mengendalikan games dari satu layar:
 
-## 🧞 Commands
+1. Pilih jumlah tim (2–10), tekan **Mulai**.
+2. **Klik sekali** pada card untuk membuka pertanyaan.
+3. **Klik dua kali** pada card untuk membalikkannya dan melihat jawaban.
+4. Pilih tim yang menjawab benar, atau biarkan *Tidak ada yang menjawab*.
+5. **Klik di luar card** untuk menutup (hanya bisa setelah reveal jawaban).
+6. Tekan **Selesai** kapan saja atau buka semua card untuk melihat peringkat akhir.
 
-All commands are run from the root of the project, from a terminal:
+Website ini dibuat hanya untuk memfasilitasi moderator game. Pemain menjawab secara lisan dan moderator yang akan menilai.
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
+Tidak ada buzzer, tidak ada timer.
 
-## 👀 Want to learn more?
+> **Reminder**: Merefresh halaman akan mengulang permainan dari awal!
 
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+## 📚 Dokumentasi
+
+- [`docs/QUESTION-FORMAT.md`](docs/QUESTION-FORMAT.md) — format berkas soal dan prompt LLM
+- [`docs/PRD.md`](docs/PRD.md) — spesifikasi produk
+- [`docs/PLANNING.md`](docs/PLANNING.md) — rencana implementasi
+
+## ⚙️ Tech Stack
+
+Website ini dibuat dengan Astro + React island + Tailwind CSS + Framer Motion

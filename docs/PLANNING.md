@@ -1,4 +1,4 @@
-# Planning Implementasi — Bible Jeopardy
+# Planning Implementasi — Jeopardy Quiz
 
 **Pendamping:** [PRD.md](PRD.md)
 **Target pelaksana:** coding agent (Sonnet 5)
@@ -46,7 +46,7 @@ Langkah:
 3. `npm install framer-motion`
 4. `npm install @fontsource-variable/inter` — font lokal, **bukan** Google Fonts CDN (PRD §17: harus jalan offline)
 5. Definisikan design token (PRD §16.2) sebagai CSS custom properties di `src/styles/global.css`, lalu daftarkan ke Tailwind theme
-6. Buat `src/components/BibleJeopardy.tsx` sebagai stub, mount di `index.astro` dengan `client:load`
+6. Buat `src/components/JeopardyGame.tsx` sebagai stub, mount di `index.astro` dengan `client:load`
 7. Bersihkan boilerplate bawaan Astro dari `index.astro`
 
 **Definition of done:**
@@ -71,7 +71,9 @@ Berkas:
 | `src/game/init.ts` | `createGameState(teamCount)` |
 | `src/game/scoring.ts` | `computeScore()`, `computeRanking()` |
 | `src/game/machine.ts` | Reducer + tipe action |
-| `src/content/questions.ts` | 12 kartu placeholder |
+| `src/content/questions.json` | Isi permainan (judul, kategori, poin, kartu) |
+| `src/content/pack.ts` | Memuat + memvalidasi JSON |
+| `src/game/pack.ts` | Parser & validator pack |
 
 Action yang harus didukung reducer:
 
@@ -282,7 +284,7 @@ Bukan bagian MVP, tapi struktur data sudah mengakomodasi:
 | --- | --- |
 | Nama tim kustom | `Team.name` sudah string bebas |
 | Persistensi sesi | Cukup serialisasi `GameState` ke `sessionStorage` |
-| Bank soal lebih banyak | `questions.ts` sudah terpisah dari UI |
+| Bank soal lebih banyak | `questions.json` sudah terpisah dari UI |
 | Gambar pada pertanyaan | `image?` + `imageAlt?` sudah ada di tipe |
 | Sound effects | Belum ada penopang; butuh perancangan tersendiri |
 | Timer pertanyaan | Belum ada penopang; akan mengubah state machine |

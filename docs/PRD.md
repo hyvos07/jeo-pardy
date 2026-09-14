@@ -1,4 +1,4 @@
-# PRD — Bible Jeopardy
+# PRD — Jeopardy Quiz
 
 **Status:** Draft final untuk implementasi
 **Versi:** 1.0
@@ -10,17 +10,20 @@
 
 ## 1. Product Overview
 
-**Bible Jeopardy** adalah web-based quiz game bergaya Jeopardy yang dioperasikan oleh seorang **moderator** untuk memainkan kuis Alkitab bersama beberapa tim.
+**Jeopardy Quiz** adalah web-based quiz game bergaya Jeopardy yang dioperasikan oleh seorang **moderator** untuk bermain bersama beberapa tim. Temanya bebas: seluruh isi permainan dibaca dari satu berkas JSON.
 
-Game terdiri dari **12 kartu pertanyaan** dalam 3 kategori:
+Bentuk papan ditentukan oleh berkas soal, bukan oleh kode:
 
-| Kategori | Slug | Isi |
+| Field JSON | Menentukan | Batas |
 | --- | --- | --- |
-| Perjanjian Lama | `old_testament` | Tokoh-tokoh dari Perjanjian Lama |
-| Perjanjian Baru | `new_testament` | Tokoh-tokoh dari Perjanjian Baru |
-| Tokoh Rasul | `apostle` | Tokoh-tokoh rasul |
+| `title` / `subtitle` | Judul permainan | — |
+| `categories` | Kolom papan | 1–6 |
+| `points` | Tingkat poin (baris) | 1–8 |
+| `cards` | Isi tiap sel | kategori × poin |
 
-Setiap kategori memiliki 4 kartu bernilai **1 poin → 3 poin → 5 poin → 10 poin**. Semakin besar nilai poin, semakin sulit pertanyaannya atau semakin tidak dikenal tokohnya.
+Jumlah kartu = jumlah kategori × jumlah tingkat poin. Pack bawaan memakai 3 kategori × 4 tingkat = **12 kartu**.
+
+Semakin besar nilai poin, semakin sulit pertanyaannya. Format lengkap berkas soal ada di [QUESTION-FORMAT.md](QUESTION-FORMAT.md).
 
 Aplikasi **tidak membutuhkan backend maupun authentication**. Seluruh game state dikelola client-side.
 
@@ -36,7 +39,7 @@ Implikasi penting: **tidak ada informasi rahasia di layar.** Jawaban disembunyik
 
 ### Primary Goals
 
-1. Menyediakan permainan Bible Jeopardy yang sederhana dan mudah dioperasikan moderator.
+1. Menyediakan permainan Jeopardy yang sederhana dan mudah dioperasikan moderator.
 2. Membuat pengalaman bermain terasa seperti game show, dengan nuansa visual yang soft dan elegan.
 3. Memudahkan moderator membuka kartu, menampilkan pertanyaan, reveal jawaban, dan memberikan poin.
 4. Menampilkan ranking akhir dengan visual yang menyenangkan.
@@ -114,8 +117,8 @@ Ditambah: **"Selesai"** adalah kontrol moderator yang dapat mengakhiri game kapa
 
 ### 5.1 Komponen
 
-**Title:** `Bible Jeopardy`
-**Subtitle (opsional):** `Uji pengetahuanmu tentang Alkitab`
+**Title:** dari `pack.title`
+**Subtitle (opsional):** dari `pack.subtitle`
 
 **Team Count Input** — stepper dengan tombol `[-]` dan `[+]`:
 
@@ -156,21 +159,23 @@ Input nama tim kustom **tidak termasuk MVP.** Struktur data `Team.name` sudah be
 ### 6.1 Tipe data
 
 ```typescript
-type CategorySlug = "old_testament" | "new_testament" | "apostle";
-type CardPoints = 1 | 3 | 5 | 10;
 type ActiveCardState = "question" | "answer";
 type GameStatus = "home" | "playing" | "finished";
 
 interface Team {
   id: string;        // "team-1", "team-2", ...
   name: string;      // "Tim 1", "Tim 2", ...
-  score: number;     // selalu >= 0 pada MVP
+}
+
+interface Category {
+  id: string;        // slug, dirujuk oleh JeopardyCard.category
+  label: string;     // teks yang tampil di papan
 }
 
 interface JeopardyCard {
-  id: string;              // "ot-1", "nt-2", "ap-5", ...
-  category: CategorySlug;
-  points: CardPoints;
+  id: string;              // "<category>-<points>"
+  category: string;        // cocok dengan Category.id
+  points: number;
   question: string;
   image?: string;          // opsional, path relatif ke /public
   imageAlt?: string;       // wajib diisi jika `image` ada
@@ -179,8 +184,18 @@ interface JeopardyCard {
   awardedTeamId: string | null;  // tim penerima poin, null = tidak ada yang menjawab
 }
 
+/** Hasil parse questions.json — bentuk papan sekaligus isinya. */
+interface QuizPack {
+  title: string;
+  subtitle?: string;
+  categories: Category[];
+  points: number[];        // urut dari termurah
+  cards: JeopardyCard[];
+}
+
 interface GameState {
   status: GameStatus;
+  pack: QuizPack;
   teams: Team[];
   cards: JeopardyCard[];
   activeCardId: string | null;
@@ -188,6 +203,10 @@ interface GameState {
   pendingAward: string | null;              // pilihan dropdown sebelum di-commit
 }
 ```
+
+**Catatan:** `Team.score` sengaja tidak ada. Skor dihitung sebagai turunan dari `cards` (lihat §12.3), sehingga tidak mungkin desinkron.
+
+Kategori dan nilai poin dulunya union type yang dikunci di kode. Sekarang keduanya data biasa — itulah yang membuat tema permainan bebas tanpa mengubah kode.
 
 ### 6.2 Catatan perubahan dari draft awal
 
@@ -206,7 +225,7 @@ Draft awal tidak mencatat siapa yang mendapat poin dari kartu mana. Ini dibutuhk
 
 Kondisi berikut harus selalu benar. Pelanggaran = bug.
 
-1. `cards.length === 12` sepanjang permainan.
+1. `cards.length === categories.length x points.length` sepanjang permainan.
 2. Setiap kombinasi (`category`, `points`) muncul tepat satu kali.
 3. `activeCardId !== null` ⟺ `activeCardState !== null`.
 4. Jika `activeCardId !== null`, kartu tersebut punya `opened === false`.
@@ -228,7 +247,7 @@ Invariant #6 adalah pemeriksaan integritas yang paling berguna: kalau ini gagal,
 │ Tim 1  7    Tim 2  5    Tim 3  2    Tim 4  0                │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│                      Bible Jeopardy                         │
+│                      <Judul Pack>                           │
 │                                                             │
 │     PERJANJIAN         PERJANJIAN          TOKOH            │
 │        LAMA               BARU             RASUL            │
@@ -592,7 +611,7 @@ Sediakan satu tombol: `Main Lagi` — mereset state ke Home. Tidak ada konfirmas
 
 Arah visual:
 
-> **Soft, clean, elegant Bible-themed game show**
+> **Soft, clean, elegant game show**
 
 Hindari warna terlalu jenuh atau neon.
 
@@ -793,7 +812,7 @@ Persyaratan:
 Astro adalah static site generator. Game ini pada dasarnya adalah aplikasi client-side dengan state penuh, jadi arsitekturnya:
 
 - **Satu halaman Astro** (`src/pages/index.astro`) sebagai shell — meta tag, font, style global
-- **Satu React island** (`<BibleJeopardy client:load />`) berisi seluruh game
+- **Satu React island** (`<JeopardyGame client:load />`) berisi seluruh game
 - **Tanpa routing** — perpindahan layar diatur oleh `status` di dalam state machine
 
 Alasan tidak memakai route terpisah (`/game`, `/game/finished`): state game hanya ada di memori. Route terpisah berarti refresh atau tombol back akan menghasilkan halaman dengan state kosong — bug yang tidak menyenangkan di tengah permainan. Satu halaman menghindari seluruh kelas masalah ini.
@@ -804,7 +823,7 @@ Konsekuensi yang perlu disadari: **refresh browser akan mereset permainan.** Unt
 
 ```text
 index.astro
-└── <BibleJeopardy client:load />          ← React island
+└── <JeopardyGame client:load />            ← React island
     │
     ├── HomeScreen
     │   ├── Title
@@ -835,7 +854,7 @@ src/
 ├── pages/
 │   └── index.astro                 # Shell
 ├── components/
-│   ├── BibleJeopardy.tsx           # Root island, state machine
+│   ├── JeopardyGame.tsx             # Root island, state machine
 │   ├── HomeScreen.tsx
 │   ├── TeamCountInput.tsx
 │   ├── GameScreen.tsx
@@ -854,7 +873,8 @@ src/
 │   ├── scoring.ts                   # computeScore, ranking
 │   └── init.ts                      # createGameState()
 ├── content/
-│   └── questions.ts                # 12 kartu — TERPISAH dari UI
+│   ├── questions.json              # Isi permainan — TERPISAH dari UI
+│   └── pack.ts                     # Memuat + memvalidasi questions.json
 └── styles/
     └── global.css                  # Tokens + Tailwind
 ```
@@ -865,38 +885,42 @@ Pemisahan `game/` dari `components/` disengaja: logika state machine dan scoring
 
 ## 23. Content Model
 
-Konten 9 pertanyaan **wajib disimpan terpisah dari komponen UI** (`src/content/questions.ts`) agar mudah diganti tanpa menyentuh kode.
+Seluruh isi permainan **wajib berada di luar kode** — di `src/content/questions.json` — agar tema, bentuk papan, dan soal dapat diganti tanpa menyentuh komponen.
 
-```typescript
-export const cards: JeopardyCard[] = [
-  // Perjanjian Lama
-  { id: "ot-1", category: "old_testament", points: 1, question: "...", answer: "..." },
-  { id: "ot-2", category: "old_testament", points: 2, question: "...", answer: "..." },
-  { id: "ot-5", category: "old_testament", points: 5, question: "...", answer: "..." },
-
-  // Perjanjian Baru
-  { id: "nt-1", category: "new_testament", points: 1, question: "...", answer: "..." },
-  { id: "nt-2", category: "new_testament", points: 2, question: "...", answer: "..." },
-  { id: "nt-5", category: "new_testament", points: 5, question: "...", answer: "..." },
-
-  // Tokoh Rasul
-  { id: "ap-1", category: "apostle", points: 1, question: "...", answer: "..." },
-  { id: "ap-2", category: "apostle", points: 2, question: "...", answer: "..." },
-  { id: "ap-5", category: "apostle", points: 5, question: "...", answer: "..." },
-];
+```json
+{
+  "title": "Judul Permainan",
+  "subtitle": "Kalimat pendek, opsional",
+  "categories": ["Kategori A", "Kategori B"],
+  "points": [1, 3, 5, 10],
+  "cards": [
+    { "category": "kategori-a", "points": 1, "question": "...", "answer": "..." }
+  ]
+}
 ```
 
-**Untuk MVP, isi berupa placeholder** — pemilik produk akan mengisi pertanyaan sebenarnya. Placeholder harus berupa teks yang jelas menandakan dirinya placeholder (contoh: `"[Pertanyaan 1 poin — Perjanjian Lama]"`), bukan pertanyaan Alkitab palsu yang bisa tidak sengaja terpakai saat permainan sungguhan.
+Berkas dibaca dan divalidasi oleh `src/game/pack.ts` saat modul dimuat, sehingga pack yang cacat gagal saat startup — bukan di tengah permainan di depan penonton. Format lengkapnya didokumentasikan di [QUESTION-FORMAT.md](QUESTION-FORMAT.md).
 
-### 23.1 Panduan tingkat kesulitan
+### 23.1 Aturan validasi
 
-| Poin | Tingkat | Contoh tokoh |
-| --- | --- | --- |
-| 1 | Sangat dikenal | Adam, Nuh, Musa, Yesus, Petrus |
-| 2 | Cukup dikenal, butuh pengetahuan lebih spesifik | — |
-| 5 | Kurang dikenal, identifikasi lebih sulit | — |
+Yang ditolak, masing-masing dengan pesan yang menyebut lokasinya:
 
-### 23.2 Dukungan gambar
+- `title` kosong
+- Jumlah kategori di luar 1–6, atau ada `id` kembar
+- Jumlah tingkat poin di luar 1–8, bukan bilangan bulat positif, atau ada nilai kembar
+- Kartu merujuk kategori atau nilai poin yang tidak ada
+- Dua kartu menempati sel yang sama
+- Ada sel papan yang kosong
+- `question` atau `answer` kosong
+- `image` tanpa `imageAlt`
+
+### 23.2 Panduan tingkat kesulitan
+
+Kesulitan naik bersama nilai poin. Tingkat terendah sebaiknya diketahui hampir semua orang di audiens; tingkat tertinggi menantang tapi masih wajar. Papan tidak menampilkan label kesulitan — nilai poin itu sendiri yang jadi petunjuknya.
+
+**Isi bawaan berupa placeholder** yang jelas menandakan dirinya placeholder (contoh: `"[Pertanyaan 1 poin — Perjanjian Lama]"`), bukan soal palsu yang bisa tidak sengaja terpakai saat permainan sungguhan.
+
+### 23.3 Dukungan gambar
 
 Setiap pertanyaan boleh punya `image?: string`. Komponen harus menangani kedua kasus (ada / tidak ada gambar) tanpa mengubah struktur modal secara keseluruhan.
 
@@ -938,7 +962,7 @@ Tidak boleh ada cara bagi klik tak sengaja untuk melewati atau merusak siklus in
 
 ### Home
 
-- [ ] Menampilkan judul Bible Jeopardy
+- [ ] Menampilkan judul dari pack
 - [ ] Pengguna dapat memilih jumlah tim
 - [ ] Default jumlah tim adalah 2
 - [ ] Minimum 2, maksimum 10
@@ -1025,5 +1049,5 @@ Untuk implementer — hal-hal yang **tidak boleh** diinterpretasikan ulang:
 4. **Tanpa tie-breaker** — semua tim berskor tertinggi adalah pemenang (§15.2).
 5. **Tanpa hint tekstual** untuk interaksi (§13.1, §24.2).
 6. Kartu yang sudah dimainkan **tetap di grid** (§9.2).
-7. Konten pertanyaan **terpisah** dari komponen UI (§23).
+7. Konten pertanyaan **terpisah** dari kode, di questions.json (§23).
 8. **Prioritaskan kebenaran state dan interaksi lebih dulu**, baru visual polish.
