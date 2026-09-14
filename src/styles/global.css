@@ -1,0 +1,53 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+/* Design tokens — PRD §16. Light mode only (PRD §16.3).
+   Deep navy-indigo primary with pale cyan support; gold stays reserved
+   for winner elements only. */
+@theme {
+  --color-background: #f7f9fc;
+  --color-surface: #ffffff;
+  --color-primary: #1b2a63;
+  --color-primary-soft: #e6ecf8;
+  --color-secondary: #2f6f9f;
+  --color-secondary-soft: #e3f1f9;
+  --color-ink: #1c2438;
+  --color-ink-muted: #6b7488;
+  --color-edge: #d8e0ee;
+  --color-accent: #c6a15b;
+
+  --radius-card: 16px;
+  --radius-button: 12px;
+  --radius-pill: 999px;
+
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  background-color: var(--color-background);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+}
+
+/* Visible focus everywhere — PRD §21. */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+}
+
+/* PRD §19.3 — reduced motion collapses to short fades. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.15s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.15s !important;
+  }
+}
