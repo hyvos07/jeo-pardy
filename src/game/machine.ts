@@ -20,15 +20,12 @@ function commitActiveCard(state: GameState): GameState {
       : card,
   );
 
-  const allPlayed = cards.every((c) => c.opened);
-
   return {
     ...state,
     cards,
     activeCardId: null,
     activeCardState: null,
     pendingAward: null,
-    status: allPlayed ? "finished" : state.status,
   };
 }
 
@@ -45,13 +42,19 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (state.activeCardId !== null) return state;
 
       const card = state.cards.find((c) => c.id === action.cardId);
-      if (!card || card.opened) return state;
+      if (!card) return state;
+
+      // A played card can be reopened to correct a misrecorded award. It goes
+      // straight to the answer with its previous pick preselected, so the
+      // moderator sees what was recorded rather than a blank dropdown that
+      // would silently drop the points on close.
+      const replay = card.opened;
 
       return {
         ...state,
         activeCardId: card.id,
-        activeCardState: "question",
-        pendingAward: null,
+        activeCardState: replay ? "answer" : "question",
+        pendingAward: replay ? card.awardedTeamId : null,
       };
     }
 

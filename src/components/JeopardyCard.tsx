@@ -37,18 +37,19 @@ export function JeopardyCardTile({
     <button
       ref={(el) => registerRef(card.id, el)}
       type="button"
-      disabled={disabled || played}
-      aria-disabled={played || undefined}
-      tabIndex={played ? -1 : undefined}
+      disabled={disabled}
+      // A played card stays reachable so a misrecorded award can be corrected;
+      // it just reads as spent.
       aria-label={
         played
-          ? `${categoryLabel}, ${card.points} poin, sudah dimainkan`
+          ? `${categoryLabel}, ${card.points} poin, sudah dijawab — buka untuk memperbaiki poin`
           : `${categoryLabel}, ${card.points} poin`
       }
       onClick={() => onOpen(card.id)}
       className={
         played
-          ? `${base} text-ink-muted/50 cursor-default text-2xl opacity-40`
+          ? `${base} text-ink-muted/60 text-2xl opacity-45 transition duration-150 ease-out
+             hover:enabled:opacity-70 hover:enabled:shadow-sm`
           : `${base} shadow-sm transition duration-150 ease-out
              hover:enabled:-translate-y-0.5 hover:enabled:scale-103 hover:enabled:shadow-md
              active:enabled:scale-100

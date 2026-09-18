@@ -99,8 +99,8 @@ await page.waitForSelector(`text=${firstCat.label}`);
 
 // ---------- BOARD ----------
 check(
-  `board has ${totalCards} playable cards`,
-  (await page.locator("main button:not([aria-disabled])").count()) === totalCards,
+  `board has ${totalCards} cards`,
+  (await page.locator("main button").count()) === totalCards,
 );
 check("every category heading is shown",
   (await Promise.all(categories.map((c) => page.isVisible(`text=${c.label}`)))).every(Boolean),
@@ -117,7 +117,7 @@ check(
 await shot(page, "02-board");
 
 // ---------- QUESTION ----------
-const midLabel = new RegExp(`${firstCat.label}, ${midPoints} poin`);
+const midLabel = new RegExp(`^${firstCat.label}, ${midPoints} poin$`);
 await page.getByRole("button", { name: midLabel }).click();
 await page.waitForSelector('[role="dialog"]');
 check("single click opens question", await page.isVisible('[role="dialog"]'));
@@ -188,7 +188,7 @@ await page.waitForTimeout(500);
 check("outside click closes after reveal", !(await page.isVisible('[role="dialog"]')));
 check(
   "played card is marked",
-  (await page.locator('main button[aria-disabled="true"]').count()) === 1,
+  (await page.locator("main button", { hasText: "✓" }).count()) === 1,
 );
 check(
   "card stays in the grid",
@@ -196,8 +196,48 @@ check(
 );
 await shot(page, "05-after-close");
 
+// ---------- REOPEN TO CORRECT AN AWARD ----------
+const playedTile = page.getByRole("button", {
+  name: new RegExp(`${firstCat.label}, ${midPoints} poin, sudah dijawab`),
+});
+check("played card is still clickable", (await playedTile.count()) === 1);
+
+await playedTile.click();
+await page.waitForSelector('[role="dialog"]');
+check("reopen goes straight to the answer", await page.isVisible("#score-assignment"));
+check("correction is labelled", await page.isVisible("text=Perbaiki Poin"));
+check(
+  "previous award is preselected",
+  (await page.locator("#score-assignment").inputValue()) === "team-2",
+);
+check(
+  "points are not doubled while reopened",
+  (await scoreOf("Tim 2")) === String(midPoints),
+);
+await shot(page, "05b-correction");
+
+// Move the award to Tim 1 and confirm the points follow.
+await page.selectOption("#score-assignment", "team-1");
+await page.waitForTimeout(900);
+await page.mouse.click(30, 450);
+await page.waitForTimeout(500);
+check("correction closes", !(await page.isVisible('[role="dialog"]')));
+check("corrected award moves to Tim 1", (await scoreOf("Tim 1")) === String(midPoints));
+check("corrected award leaves Tim 2", (await scoreOf("Tim 2")) === "0");
+
+// Put it back so the finish-state expectations below still hold.
+await playedTile.click();
+await page.waitForSelector('[role="dialog"]');
+await page.selectOption("#score-assignment", "__nobody__");
+await page.waitForTimeout(600);
+await page.mouse.click(30, 450);
+await page.waitForTimeout(500);
+check("award can be cleared entirely", (await scoreOf("Tim 1")) === "0");
+
 // ---------- KEYBOARD PATH ----------
-const topLabel = new RegExp(`${lastCat.label}, ${topPoints} poin`);
+// Anchored so it matches only the unplayed card, never the longer
+// "…, sudah dijawab" label of one already answered.
+const topLabel = new RegExp(`^${lastCat.label}, ${topPoints} poin$`);
 await page.getByRole("button", { name: topLabel }).focus();
 await page.keyboard.press("Enter");
 await page.waitForSelector('[role="dialog"]');
@@ -214,17 +254,64 @@ await page.waitForTimeout(500);
 check("Escape closes on answer state", !(await page.isVisible('[role="dialog"]')));
 check("keyboard award landed on Tim 3", (await scoreOf("Tim 3")) === String(topPoints));
 
-// ---------- FINISH ----------
-await page.getByRole("button", { name: "Selesai" }).click();
-await page.waitForSelector("text=Final Ranking");
-check("Selesai ends the game early", await page.isVisible("text=Final Ranking"));
-check("winner treatment shown", await page.isVisible("text=Winner"));
+// ---------- A FULL BOARD DOES NOT END THE GAME ----------
+const finishBtn = page.getByRole("button", { name: "Selesai" });
 
-const winnerBlock = await page.textContent("section");
+/** Reads the finish button's background, to tell dormant from lit. */
+const finishBg = () =>
+  finishBtn.evaluate((el) => getComputedStyle(el).backgroundColor);
+
+const dormantBg = await finishBg();
+
+// Play out every card that is still untouched.
+const remaining = await page
+  .locator("main button")
+  .filter({ hasNotText: "✓" })
+  .count();
+
+for (let i = 0; i < remaining; i++) {
+  const tile = page.locator("main button").filter({ hasNotText: "✓" }).first();
+  if ((await tile.count()) === 0) break;
+  await tile.click();
+  await page.waitForSelector('[role="dialog"]');
+  await page.locator('[role="dialog"]').dblclick({ position: { x: 200, y: 60 } });
+  await page.waitForTimeout(850);
+  await page.mouse.click(30, 450);
+  await page.waitForTimeout(450);
+}
+
 check(
-  "top scorer wins",
-  winnerBlock.includes("Tim 3") && winnerBlock.includes(String(topPoints)),
+  "every card is played",
+  (await page.locator("main button", { hasText: "✓" }).count()) === totalCards,
 );
+check(
+  "a full board does NOT end the game on its own",
+  await page.isVisible("button:has-text('Selesai')"),
+);
+check("results screen has not appeared", !(await page.isVisible("text=Final Ranking")));
+
+const litBg = await finishBg();
+check("Selesai lights up when the board is done", litBg !== dormantBg, `${dormantBg} -> ${litBg}`);
+// The design system's primary is #1B2A63.
+check("Selesai uses the primary colour", litBg === "rgb(27, 42, 99)", litBg);
+await shot(page, "05c-board-complete");
+
+// A card can still be corrected after the board is full.
+const anyPlayed = page.locator("main button", { hasText: "✓" }).first();
+await anyPlayed.click();
+await page.waitForSelector('[role="dialog"]');
+check("cards stay correctable on a full board", await page.isVisible("#score-assignment"));
+await page.selectOption("#score-assignment", "team-3");
+await page.waitForTimeout(500);
+await page.mouse.click(30, 450);
+await page.waitForTimeout(450);
+check("still playing after that correction", !(await page.isVisible("text=Final Ranking")));
+
+// ---------- FINISH ----------
+await finishBtn.click();
+await page.waitForSelector("text=Final Ranking");
+check("Selesai ends the game", await page.isVisible("text=Final Ranking"));
+check("winner treatment shown", await page.isVisible("text=Winner"));
 check("podium labels the unit", (await page.locator("text=Poin").count()) > 0);
 await page.waitForTimeout(1200);
 await shot(page, "06-results");

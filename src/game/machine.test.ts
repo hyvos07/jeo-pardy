@@ -36,11 +36,18 @@ function playing(teams = 3): GameState {
   return createGameState(teams, TEST_PACK);
 }
 
-/** Invariant PRD §6.3 #6 — total score equals points of awarded played cards. */
+/**
+ * Invariant PRD §6.3 #6 — total score equals points of awarded played cards.
+ *
+ * The active card counts only through `pendingAward`, whether it is newly
+ * opened or a played card reopened for a correction.
+ */
 function assertScoreIntegrity(state: GameState) {
   const total = Object.values(computeScores(state)).reduce((a, b) => a + b, 0);
   const fromCards = state.cards
-    .filter((c) => c.opened && c.awardedTeamId !== null)
+    .filter(
+      (c) => c.opened && c.id !== state.activeCardId && c.awardedTeamId !== null,
+    )
     .reduce((sum, c) => sum + c.points, 0);
   const pendingCard = state.cards.find((c) => c.id === state.activeCardId);
   const pending =
@@ -143,17 +150,6 @@ describe("illegal transitions are no-ops", () => {
     expect(state.activeCardState).toBe("answer");
   });
 
-  it("a played card cannot be reopened", () => {
-    const played = run(
-      playing(),
-      { type: "OPEN_CARD", cardId: "ot-1" },
-      { type: "REVEAL_ANSWER" },
-      { type: "CLOSE_CARD" },
-    );
-    const after = gameReducer(played, { type: "OPEN_CARD", cardId: "ot-1" });
-    expect(after.activeCardId).toBeNull();
-  });
-
   it("a second card cannot open over an active one", () => {
     const before = run(playing(), { type: "OPEN_CARD", cardId: "ot-1" });
     const after = gameReducer(before, { type: "OPEN_CARD", cardId: "nt-3" });
@@ -251,9 +247,106 @@ describe("scoring", () => {
       { type: "SET_PENDING_AWARD", teamId: "team-1" },
       { type: "CLOSE_CARD" },
     );
-    // Any further attempt on the same card is rejected upstream.
+    // Reopening for a correction must not double the award.
     state = run(state, { type: "OPEN_CARD", cardId: "ot-3" });
     expect(computeScore("team-1", state)).toBe(3);
+  });
+});
+
+describe("reopening a played card to correct an award", () => {
+  /** Plays one card and awards it to `teamId`. */
+  function awarded(cardId: string, teamId: string | null): GameState {
+    return run(
+      playing(),
+      { type: "OPEN_CARD", cardId },
+      { type: "REVEAL_ANSWER" },
+      { type: "SET_PENDING_AWARD", teamId },
+      { type: "CLOSE_CARD" },
+    );
+  }
+
+  it("reopens straight to the answer", () => {
+    const state = run(awarded("ot-5", "team-1"), {
+      type: "OPEN_CARD",
+      cardId: "ot-5",
+    });
+    expect(state.activeCardId).toBe("ot-5");
+    expect(state.activeCardState).toBe("answer");
+  });
+
+  it("preselects the award that was recorded", () => {
+    const state = run(awarded("ot-5", "team-2"), {
+      type: "OPEN_CARD",
+      cardId: "ot-5",
+    });
+    expect(state.pendingAward).toBe("team-2");
+  });
+
+  it("preselects nobody when nobody had answered", () => {
+    const state = run(awarded("ot-5", null), {
+      type: "OPEN_CARD",
+      cardId: "ot-5",
+    });
+    expect(state.pendingAward).toBeNull();
+  });
+
+  it("does not double the points while reopened", () => {
+    const state = run(awarded("ot-5", "team-1"), {
+      type: "OPEN_CARD",
+      cardId: "ot-5",
+    });
+    expect(computeScore("team-1", state)).toBe(5);
+    assertScoreIntegrity(state);
+  });
+
+  it("moves the points to the corrected team", () => {
+    const state = run(
+      awarded("ot-5", "team-1"),
+      { type: "OPEN_CARD", cardId: "ot-5" },
+      { type: "SET_PENDING_AWARD", teamId: "team-3" },
+      { type: "CLOSE_CARD" },
+    );
+    expect(computeScore("team-1", state)).toBe(0);
+    expect(computeScore("team-3", state)).toBe(5);
+    expect(state.cards.find((c) => c.id === "ot-5")?.awardedTeamId).toBe("team-3");
+  });
+
+  it("can take the points back to nobody", () => {
+    const state = run(
+      awarded("ot-5", "team-1"),
+      { type: "OPEN_CARD", cardId: "ot-5" },
+      { type: "SET_PENDING_AWARD", teamId: null },
+      { type: "CLOSE_CARD" },
+    );
+    expect(computeScore("team-1", state)).toBe(0);
+    expect(state.cards.find((c) => c.id === "ot-5")?.awardedTeamId).toBeNull();
+  });
+
+  it("keeps the award when reopened and closed unchanged", () => {
+    const state = run(
+      awarded("ot-5", "team-2"),
+      { type: "OPEN_CARD", cardId: "ot-5" },
+      { type: "CLOSE_CARD" },
+    );
+    expect(computeScore("team-2", state)).toBe(5);
+  });
+
+  it("leaves the card played throughout", () => {
+    const state = run(awarded("ot-5", "team-1"), {
+      type: "OPEN_CARD",
+      cardId: "ot-5",
+    });
+    expect(state.cards.find((c) => c.id === "ot-5")?.opened).toBe(true);
+  });
+
+  it("does not rewind to the question state", () => {
+    // REVEAL_ANSWER is a no-op here: the card is already showing its answer.
+    const state = run(
+      awarded("ot-5", "team-1"),
+      { type: "OPEN_CARD", cardId: "ot-5" },
+      { type: "REVEAL_ANSWER" },
+    );
+    expect(state.activeCardState).toBe("answer");
   });
 });
 
@@ -272,11 +365,30 @@ describe("game completion", () => {
     return state;
   }
 
-  it("finishes automatically after the last card", () => {
+  it("stays in play once every card is done, so awards can still be fixed", () => {
     const state = playAll("team-1");
-    expect(state.status).toBe("finished");
+    expect(state.status).toBe("playing");
     expect(state.cards.every((c) => c.opened)).toBe(true);
     // 3 categories x (1+3+5+10)
+    expect(computeScore("team-1", state)).toBe(57);
+  });
+
+  it("can correct an award after every card is played", () => {
+    let state = playAll("team-1");
+    state = run(
+      state,
+      { type: "OPEN_CARD", cardId: "ot-10" },
+      { type: "SET_PENDING_AWARD", teamId: "team-2" },
+      { type: "CLOSE_CARD" },
+    );
+    expect(state.status).toBe("playing");
+    expect(computeScore("team-1", state)).toBe(47);
+    expect(computeScore("team-2", state)).toBe(10);
+  });
+
+  it("only Selesai ends a fully played board", () => {
+    const state = run(playAll("team-1"), { type: "FINISH_GAME" });
+    expect(state.status).toBe("finished");
     expect(computeScore("team-1", state)).toBe(57);
   });
 
@@ -400,6 +512,30 @@ describe("score integrity invariant (PRD §6.3 #6)", () => {
       assertScoreIntegrity(state);
     }
 
+    // A full board keeps playing; only Selesai ends it.
+    expect(state.status).toBe("playing");
+    expect(state.cards.every((c) => c.opened)).toBe(true);
+
+    // Now reopen every card and reshuffle the awards — the correction path is
+    // where double-counting would show up.
+    for (const card of [...state.cards]) {
+      state = run(state, { type: "OPEN_CARD", cardId: card.id });
+      assertScoreIntegrity(state);
+
+      for (let i = 0; i < 2; i++) {
+        state = run(state, {
+          type: "SET_PENDING_AWARD",
+          teamId: teamIds[pick++ % teamIds.length]!,
+        });
+        assertScoreIntegrity(state);
+      }
+
+      state = run(state, { type: "CLOSE_CARD" });
+      assertScoreIntegrity(state);
+    }
+
+    state = run(state, { type: "FINISH_GAME" });
     expect(state.status).toBe("finished");
+    assertScoreIntegrity(state);
   });
 });

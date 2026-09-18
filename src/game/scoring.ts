@@ -8,15 +8,18 @@ import type { GameState, Team } from "./types";
  * `team.score += points` anywhere would reintroduce the double-award bug.
  */
 export function computeScore(teamId: string, state: GameState): number {
+  // The active card is scored solely by `pendingAward`, even when it has been
+  // played before and reopened for a correction — otherwise its points would
+  // count twice while the moderator is changing the pick.
   const committed = state.cards
-    .filter((c) => c.opened && c.awardedTeamId === teamId)
+    .filter(
+      (c) => c.opened && c.id !== state.activeCardId && c.awardedTeamId === teamId,
+    )
     .reduce((sum, c) => sum + c.points, 0);
 
   const activeCard = state.cards.find((c) => c.id === state.activeCardId);
   const pending =
-    activeCard && !activeCard.opened && state.pendingAward === teamId
-      ? activeCard.points
-      : 0;
+    activeCard && state.pendingAward === teamId ? activeCard.points : 0;
 
   return committed + pending;
 }

@@ -31,6 +31,9 @@ export function ActiveCardOverlay({
 
   const isAnswer = state === "answer";
 
+  /** True when this overlay opened straight into the answer — a correction. */
+  const openedOnAnswer = useRef(state === "answer");
+
   /**
    * Both faces are mounted and rotate together through a full 180°, each with
    * its backface hidden — the card genuinely turns over rather than swinging
@@ -132,13 +135,16 @@ export function ActiveCardOverlay({
         style={{ perspective: 2000 }}
       >
         <motion.div
+          // A correction opens already showing its answer, so it starts at
+          // 180° instead of flipping there for no reason.
+          initial={{ rotateY: openedOnAnswer.current ? 180 : 0 }}
           animate={{
             rotateY: isAnswer ? 180 : 0,
             height: measured || undefined,
             // A slight lift and tilt at the midpoint: the card comes off the
             // table as it turns, rather than spinning flat in place.
-            scale: isAnswer ? [1, 0.94, 1] : 1,
-            rotateX: isAnswer ? [0, 8, 0] : 0,
+            scale: isAnswer && !openedOnAnswer.current ? [1, 0.94, 1] : 1,
+            rotateX: isAnswer && !openedOnAnswer.current ? [0, 8, 0] : 0,
           }}
           transition={
             reduced
@@ -163,7 +169,7 @@ export function ActiveCardOverlay({
 
           {/* Back — pre-rotated so it reads correctly once the card turns. */}
           <CardFace ref={backRef} hidden={!isAnswer} rotated>
-            <FaceLabel>Jawaban</FaceLabel>
+            <FaceLabel>{card.opened ? "Perbaiki Poin" : "Jawaban"}</FaceLabel>
             {isAnswer && (
               <AnswerFace
                 card={card}

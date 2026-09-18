@@ -25,6 +25,7 @@ export function GameScreen({
 }: Props) {
   const scores = computeScores(state);
   const activeCard = state.cards.find((c) => c.id === state.activeCardId);
+  const allPlayed = state.cards.every((c) => c.opened);
 
   // Remembers which tile opened the modal, so focus can return there.
   const tileRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -71,8 +72,16 @@ export function GameScreen({
           <button
             type="button"
             onClick={onFinish}
-            className="border-edge bg-surface rounded-button text-primary shrink-0 border px-5 py-2 text-sm font-semibold shadow-sm transition
-                       hover:brightness-98 active:scale-98"
+            // Every card played is a cue, not a command: the game keeps going
+            // so awards can still be corrected, but Selesai lights up to say
+            // the board is done.
+            className={
+              allPlayed
+                ? `bg-primary rounded-button shrink-0 px-5 py-2 text-sm font-semibold text-white shadow-md transition
+                   hover:brightness-115 active:scale-98`
+                : `border-edge bg-surface rounded-button text-primary shrink-0 border px-5 py-2 text-sm font-semibold shadow-sm transition
+                   hover:brightness-98 active:scale-98`
+            }
           >
             Selesai
           </button>
