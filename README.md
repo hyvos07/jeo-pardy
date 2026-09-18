@@ -54,7 +54,8 @@ Moderator mengendalikan games dari satu layar:
 3. **Klik dua kali** pada card untuk membalikkannya dan melihat jawaban.
 4. Pilih tim yang menjawab benar, atau biarkan *Tidak ada yang menjawab*.
 5. **Klik di luar card** untuk menutup (hanya bisa setelah reveal jawaban).
-6. Tekan **Selesai** kapan saja atau buka semua card untuk melihat peringkat akhir.
+6. Salah pilih tim? **Klik card yang sudah dijawab** untuk membukanya lagi dan memperbaiki poin.
+7. Tekan **Selesai** untuk melihat peringkat akhir. Saat semua card sudah dijawab, tombol ini menyala — tapi permainan tidak berakhir sendiri, jadi poin masih bisa dikoreksi.
 
 Website ini dibuat hanya untuk memfasilitasi moderator game. Pemain menjawab secara lisan dan moderator yang akan menilai.
 

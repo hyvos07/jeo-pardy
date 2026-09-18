@@ -109,7 +109,9 @@ Tiga aturan ini adalah inti dari produk dan **tidak boleh diinterpretasikan ulan
 > 2. **Double click** pada active card → reveal jawaban.
 > 3. **Click di luar card** → hanya menutup card **setelah** jawaban di-reveal.
 
-Ditambah: **"Selesai"** adalah kontrol moderator yang dapat mengakhiri game kapan saja, sedangkan menyelesaikan seluruh 12 kartu mengakhiri game secara otomatis.
+Ditambah: **"Selesai"** adalah satu-satunya cara mengakhiri game. Papan yang sudah habis tidak mengakhiri permainan — hanya menyalakan tombol itu (§14).
+
+Kartu yang sudah dijawab **tetap bisa dibuka kembali** untuk memperbaiki salah input tim (§10.1.1).
 
 ---
 
@@ -311,12 +313,14 @@ Kartu tertutup **hanya** menampilkan nilai poinnya (`1`, `2`, atau `5`). Tidak a
 
 ### 9.2 Kartu yang sudah dimainkan
 
-- Opacity berkurang (± 40%)
-- Hover interaction dimatikan
-- `cursor: default`
+- Opacity berkurang (± 45%)
+- Tandai dengan checkmark `✓`
 - **Tetap menempati posisi di grid** — jangan hapus dari layout, karena akan mengubah struktur board
-- Tandai dengan checkmark `✓` atau tampilan muted
-- `aria-disabled="true"`, dan dikeluarkan dari tab order (`tabindex="-1"`)
+- **Tetap dapat diklik dan difokus** — membukanya masuk ke mode koreksi (§10.1.1)
+- Hover hanya menaikkan opacity sedikit; tanpa lift dan scale seperti kartu yang belum dimainkan, agar keduanya tetap mudah dibedakan
+- `aria-label` menyebut statusnya: `"<kategori>, <n> poin, sudah dijawab — buka untuk memperbaiki poin"`
+
+Kartu terjawab **tidak** memakai `aria-disabled` dan tidak dikeluarkan dari tab order: keduanya akan memblokir jalur koreksi yang justru dibutuhkan.
 
 ---
 
@@ -330,19 +334,18 @@ Ini adalah bagian paling kritis dari spesifikasi. Implementasikan sebagai state 
                     │ activeCardId=null │
                     └─────────┬─────────┘
                               │
-                     single click kartu
-                     (opened === false)
-                              ↓
-                    ┌───────────────────┐
-         ┌─────────▶│     QUESTION      │
-         │          └─────────┬─────────┘
-         │                    │
-         │            double click card
-   click outside              ↓
-   → DIABAIKAN      ┌───────────────────┐
-   Escape           │      ANSWER       │
-   → DIABAIKAN      │ + score dropdown  │
-         │          └─────────┬─────────┘
+     single click kartu belum dimainkan    single click kartu SUDAH dimainkan
+                              ↓                            │
+                    ┌───────────────────┐                  │
+         ┌─────────▶│     QUESTION      │                  │
+         │          └─────────┬─────────┘                  │
+         │                    │                            │
+         │            double click card                    │
+   click outside              ↓                            │
+   → DIABAIKAN      ┌───────────────────┐                  │
+   Escape           │      ANSWER       │◀─────────────────┘
+   → DIABAIKAN      │ + score dropdown  │   (koreksi: pilihan
+         │          └─────────┬─────────┘    lama terisi)
          └────────────────────┤
                               │
                        click outside
@@ -355,8 +358,8 @@ Ini adalah bagian paling kritis dari spesifikasi. Implementasikan sebagai state 
                               ↓
                     ┌───────────────────┐
                     │   BOARD (idle)    │
-                    │   atau FINISHED   │
-                    │ jika 12/12 selesai│
+                    │  tetap "playing"  │
+                    │  walau 12/12 usai │
                     └───────────────────┘
 ```
 
@@ -365,14 +368,25 @@ Ini adalah bagian paling kritis dari spesifikasi. Implementasikan sebagai state 
 | State saat ini | Aksi | State berikutnya | Efek samping |
 | --- | --- | --- | --- |
 | BOARD | Single click kartu `opened === false` | QUESTION | `activeCardId` diset, `pendingAward = null` |
-| BOARD | Single click kartu `opened === true` | BOARD | Tidak ada (no-op) |
+| BOARD | Single click kartu `opened === true` | ANSWER | `pendingAward = card.awardedTeamId` (koreksi) |
 | QUESTION | Double click active card | ANSWER | — |
 | QUESTION | Click di luar card | QUESTION | **Tidak ada — diabaikan** |
 | QUESTION | Tekan Escape | QUESTION | **Tidak ada — diabaikan** |
 | ANSWER | Pilih tim di dropdown | ANSWER | `pendingAward` diperbarui, skor preview diperbarui |
-| ANSWER | Click di luar card | BOARD / FINISHED | Commit skor, `opened = true` |
-| ANSWER | Tekan Escape | BOARD / FINISHED | Commit skor, `opened = true` |
+| ANSWER | Click di luar card | BOARD | Commit skor, `opened = true` |
+| ANSWER | Tekan Escape | BOARD | Commit skor, `opened = true` |
 | Any | Click "Selesai" | FINISHED | Commit active card jika ada di state ANSWER |
+
+### 10.1.1 Membuka ulang kartu untuk koreksi
+
+Moderator bisa salah memilih tim. Karena itu kartu yang sudah dimainkan **tetap dapat dibuka kembali**, dan langsung masuk ke state ANSWER dengan dropdown berisi pilihan yang tersimpan.
+
+Dua hal yang wajib dijaga:
+
+1. **Dropdown harus terisi pilihan lama**, bukan kembali ke *Tidak ada yang menjawab*. Kalau direset, menutup card tanpa menyentuh dropdown akan menghapus poin tanpa disadari.
+2. **Poin tidak boleh terhitung dua kali** selama kartu terbuka. `computeScore` mengeluarkan kartu aktif dari penjumlahan `committed` dan menilainya hanya lewat `pendingAward` — berlaku baik untuk kartu baru maupun kartu koreksi.
+
+Kartu koreksi membuka tanpa animasi flip: ia sudah menampilkan jawaban sejak awal, jadi memutarnya tidak masuk akal. Labelnya berbunyi **Perbaiki Poin**, bukan *Jawaban*, agar moderator tahu ini bukan kartu baru.
 
 **Catatan Escape:** Draft awal menyatakan Escape tidak boleh menutup question card. Itu dipertahankan. Namun pada state ANSWER, Escape **diizinkan** menutup — karena pada titik itu penutupan memang sudah diperbolehkan, dan memblokir Escape di sana justru melanggar ekspektasi keyboard user tanpa memberi manfaat apa pun.
 
@@ -500,6 +514,8 @@ Dengan pendekatan ini, mengganti pilihan otomatis benar tanpa logika pembatalan 
 
 Sebuah kartu hanya boleh memberi poin satu kali. Karena skor dihitung sebagai turunan dari `cards`, properti ini otomatis terjamin — tidak perlu guard tambahan.
 
+Satu-satunya perkecualian yang perlu ditangani: kartu yang dibuka ulang untuk koreksi sudah `opened === true`, sehingga akan terhitung di `committed` **dan** di `pendingAward` sekaligus. Karena itu `computeScore` mengeluarkan `activeCardId` dari penjumlahan `committed` (lihat §10.1.1).
+
 ---
 
 ## 13. Penutupan Card & Penyelesaian
@@ -520,22 +536,26 @@ Pada state QUESTION, klik di luar tidak boleh memberi umpan balik visual apa pun
 - `opened = true`
 - `awardedTeamId` di-commit dari `pendingAward`
 - `activeCardId = null`, `activeCardState = null`, `pendingAward = null`
-- Kartu tidak dapat dimainkan kembali
+- Kartu tampil redup dengan tanda ✓, tetapi **tetap dapat dibuka kembali** untuk koreksi (lihat §10.1.1)
 - Fokus keyboard kembali ke kartu yang baru saja ditutup di board (lihat §17)
 
 ---
 
 ## 14. Penyelesaian Game
 
-### 14.1 Kondisi A — Semua kartu selesai
+**Hanya ada satu cara mengakhiri game: moderator menekan "Selesai".**
 
-Ketika kartu ke-12 di-commit, `status` otomatis menjadi `"finished"`.
+### 14.1 Papan penuh bukan akhir permainan
 
-Transisi ke layar hasil terjadi setelah animasi penutupan kartu selesai (± 300ms), bukan seketika — agar tidak terasa mendadak.
+Ketika seluruh kartu sudah dimainkan, `status` **tetap** `"playing"`.
 
-### 14.2 Kondisi B — Moderator menekan "Selesai"
+Ini disengaja. Kalau game berakhir otomatis di kartu terakhir, moderator kehilangan kesempatan memperbaiki salah input pada kartu mana pun — justru pada momen ketika kesalahan paling mungkin baru disadari, saat skor akhir dibacakan.
 
-Tombol `Selesai` di **kanan bawah**, terlihat selama `status === "playing"`.
+Sebagai gantinya papan penuh **menyalakan** tombol Selesai: dari tombol berbingkai menjadi tombol isi warna `primary`. Itu isyarat bahwa papan sudah habis, bukan perintah untuk berhenti.
+
+### 14.2 Moderator menekan "Selesai"
+
+Tombol `Selesai` berada di bar atas, terlihat selama `status === "playing"`.
 
 Ketika ditekan, game langsung selesai. Tidak ada confirmation modal untuk MVP.
 
@@ -788,7 +808,7 @@ Persyaratan:
 - Modal menggunakan `role="dialog"` dan `aria-modal="true"`
 - Focus di-trap di dalam modal selama aktif
 - Setelah modal ditutup, fokus kembali ke kartu asalnya di board
-- Kartu yang sudah dimainkan: `aria-disabled="true"` dan keluar dari tab order
+- Kartu yang sudah dimainkan tetap dapat difokus (jalur koreksi), dengan `aria-label` yang menyebut statusnya
 - Perubahan skor diumumkan lewat `aria-live="polite"` region
 
 ### 21.1 Padanan keyboard untuk double click
@@ -977,7 +997,7 @@ Tidak boleh ada cara bagi klik tak sengaja untuk melewati atau merusak siklus in
 - [ ] Setiap kategori berisi tepat 3 kartu
 - [ ] Nilai kartu adalah 1, 3, 5, dan 10
 - [ ] Setiap kartu menampilkan nilai poinnya
-- [ ] Kartu yang sudah dimainkan tidak dapat dipilih lagi
+- [ ] Kartu yang sudah dimainkan dapat dibuka kembali untuk koreksi poin
 - [ ] Kartu yang sudah dimainkan tetap menempati posisinya di grid
 - [ ] Score indicator terlihat di kiri atas
 - [ ] Skor diperbarui segera setelah pemberian poin
@@ -1007,13 +1027,13 @@ Tidak boleh ada cara bagi klik tak sengaja untuk melewati atau merusak siklus in
 - [ ] Memilih `Tidak ada yang menjawab` tidak menambah poin
 - [ ] Mengganti pilihan tim memindahkan poin, tidak menggandakannya
 - [ ] Klik di luar menutup active card setelah jawaban di-reveal
-- [ ] Satu kartu hanya memberi poin satu kali
+- [ ] Satu kartu hanya memberi poin satu kali, termasuk saat dibuka ulang
 
 ### Finish
 
 - [ ] Moderator dapat menekan Selesai sebelum semua kartu selesai
 - [ ] Menekan Selesai langsung mengakhiri game
-- [ ] Menyelesaikan 12 kartu otomatis mengakhiri game
+- [ ] Menyelesaikan semua kartu TIDAK mengakhiri game; tombol Selesai menyala
 - [ ] Menekan Selesai saat state ANSWER tetap meng-commit poin yang dipilih
 - [ ] Layar hasil menampilkan skor akhir setiap tim
 - [ ] Tim diurutkan berdasarkan skor
